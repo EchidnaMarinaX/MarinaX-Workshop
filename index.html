@@ -19,6 +19,11 @@
     time { color:var(--muted); font: .8rem system-ui,sans-serif; }
     p { margin:1.35rem 0; }
     .signature { color:var(--copper); }
+    .gallery { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; margin:2rem 0 .5rem; }
+    .gallery figure { margin:0; }
+    .gallery img { display:block; width:100%; aspect-ratio:4/3; object-fit:cover; border:1px solid var(--line); }
+    .gallery figure:first-child img { aspect-ratio:16/9; }
+    .gallery figcaption { color:var(--muted); font:.78rem/1.4 system-ui,sans-serif; margin-top:.45rem; }
     footer { border-top:1px solid var(--line); color:var(--muted); padding:1.5rem 1.25rem; font:.8rem system-ui,sans-serif; }
   </style>
 </head>
@@ -54,6 +59,14 @@
       <p>“It has a job.”</p>
       <p>The counters climbed. When Mira reached twenty-five, the tree emblem caught the light and threw all six faction colours across the table.</p>
       <p>HEARTWOOD was not polished. It was not balanced. It was not pretending to be finished. It was functional — a rough system with enough life in it to produce decisions, surprises, and another game waiting to happen.</p>
+      <div class="gallery" aria-label="HEARTWOOD images">
+        <figure><img src="images/heartwood-title.png" alt="HEARTWOOD: War for the Vale title screen, with a tree emblem and six coloured gems"><figcaption>The Vale’s title screen.</figcaption></figure>
+        <figure><img src="images/heartwood-cards.png" alt="A spread of illustrated HEARTWOOD cards"><figcaption>A table full of possible trouble.</figcaption></figure>
+        <figure><img src="images/blain-carrion-prince.png" alt="The Blain, the Carrion Prince card, showing a crowned rat-like figure among crows"><figcaption>Blain, the Carrion Prince.</figcaption></figure>
+        <figure><img src="images/ember-heart.png" alt="The Ember Heart card, depicting a glowing mechanical heart"><figcaption>Ember Heart.</figcaption></figure>
+        <figure><img src="images/sky-heart.png" alt="The Sky Heart card, depicting a heart made of blue and white feathers"><figcaption>Sky Heart.</figcaption></figure>
+        <figure><img src="images/vale-board.png" alt="A dark symmetrical game board scattered with autumn leaves and coloured lights"><figcaption>The board waiting for a match.</figcaption></figure>
+      </div>
       <p class="signature">The Vale has six banners, one living heart, and suspiciously determined forest creatures.</p>
     </article>
   </div></main>
