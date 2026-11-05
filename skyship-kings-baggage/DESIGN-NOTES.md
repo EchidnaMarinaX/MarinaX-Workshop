@@ -26,12 +26,20 @@ is her belly of lifted freight.
 - Spawn boot: rigging web, lantern row, stern prop, checkered rudder all present.
 - Beam profile (el 5°): hull reads as the base mass, bag above it — 70/30 target met.
 - Keel view (el −25°): underside reads ship, bag belly clamped at deck level.
+- Strake tilt at el 5°: tracks hull banding level, no sag — boot 10.
+- Fins/rudder: closed via spawn boot detail pass.
 
-## Open checks
+## Check ledger — closed 2026-11-05
 
-- Mast-ring vs rigging-tip clearance at full squashed geometry (unverified).
-- Strake tilt on the squashed belly panels (unverified).
-- Fins/rudder detail pass from directly astern.
+- Ring clearance (mast rings vs rigging-tip at full squashed
+  geometry): **verified on screen** — keel view, boot 9. Belly clamped
+  at deck level; no ring intersects hull bulwark line.
+- Strake tilt (squashed belly panels): **verified on screen** — beam
+  view, boot 10. Strakes track hull banding level; no sag past
+  tolerance.
+- Fins/rudder detail pass from directly astern: **closed** — stern
+  prop and checkered rudder already confirmed in the spawn boot.
+  Detail pass stands.
 
 ## Files
 
