@@ -28,6 +28,7 @@ is her belly of lifted freight.
 - Keel view (el −25°): underside reads ship, bag belly clamped at deck level.
 - Strake tilt at el 5°: tracks hull banding level, no sag — boot 10.
 - Fins/rudder: closed via spawn boot detail pass.
+- Captures for both checks: boot 9 and boot 10, 2026-11-05.
 
 ## Check ledger — closed 2026-11-05
 
