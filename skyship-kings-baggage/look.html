@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Look — King's Baggage angle picker</title>
+<style>html,body{margin:0;height:100%;background:#080516}iframe{border:0;width:100%;height:100%}</style>
+</head>
+<body>
+<iframe id="frame"></iframe>
+<script>
+  // Same file, other vantage. Usage: look.html?v=bows  or ?v=<angle name|az,el[,dist]>
+  const ANGLES = {
+    bows:   { az: 205, el: 22, d: 20 },
+    stern:  { az: 20,  el: 18, d: 22 },
+    bagtop: { az: 90,  el: 62, d: 19 },
+    below:  { az: 270, el: -25, d: 21 },
+    beam:   { az: 135, el: 5,  d: 17 }
+  };
+
+  // Named angle can also arrive in the hash (?#v=bows) — query strings
+  // get stripped by some openers, the fragment usually survives.
+  if (!location.search && location.hash) {
+    history.replaceState(null, "",
+      location.pathname + "?" + location.hash.replace(/^#/, "")
+    );
+    location.reload();
+  }
+
+  const q = new URLSearchParams(location.search);
+  const key = (q.get("v") || "bows").toLowerCase();
+  let cfg = ANGLES[key] || null;
+
+  if (!cfg && key.includes(",")) {
+    const [a, e, d] = key.split(",").map(Number);
+    if (!Number.isNaN(a) && !Number.isNaN(e)) {
+      cfg = { az: a, el: e, d: d || 20 };
+    }
+  }
+
+  if (!cfg) cfg = ANGLES.bows;
+
+  let hash = `#az=${cfg.az}&el=${cfg.el}`;
+  if (cfg.d) hash += `&dist=${cfg.d}`;
+
+  document.getElementById("frame").src =
+    "index.html" + hash;
+</script>
+</body>
+</html>
