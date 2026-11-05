@@ -1,0 +1,2093 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The King's Baggage — Galleon-rigged Aerial Raider</title>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #080516;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    canvas:active {
+      cursor: grabbing;
+    }
+
+    .vignette {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      background:
+        radial-gradient(
+          circle at 50% 44%,
+          transparent 30%,
+          rgba(8, 3, 18, 0.18) 65%,
+          rgba(4, 2, 12, 0.72) 100%
+        ),
+        linear-gradient(
+          to bottom,
+          rgba(24, 12, 43, 0.18),
+          transparent 24%,
+          transparent 76%,
+          rgba(7, 3, 15, 0.38)
+        );
+    }
+
+    .title {
+      position: fixed;
+      top: 28px;
+      left: 30px;
+      z-index: 3;
+      pointer-events: none;
+      color: #f4dfb5;
+      text-shadow: 0 2px 18px #000;
+    }
+
+    .title .eyebrow {
+      margin-bottom: 7px;
+      color: #c78b58;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+    }
+
+    .title h1 {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(25px, 3.3vw, 48px);
+      font-weight: 400;
+      letter-spacing: 0.02em;
+    }
+
+    .title p {
+      margin: 7px 0 0;
+      color: rgba(235, 218, 231, 0.62);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .hint {
+      position: fixed;
+      right: 22px;
+      bottom: 18px;
+      z-index: 3;
+      padding: 9px 13px;
+      border: 1px solid rgba(215, 174, 128, 0.2);
+      border-radius: 999px;
+      background: rgba(10, 6, 25, 0.48);
+      color: rgba(240, 222, 225, 0.62);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      backdrop-filter: blur(8px);
+      pointer-events: none;
+    }
+
+    .loading {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      background: #080516;
+      color: #c78b58;
+      font-size: 11px;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      transition: opacity 0.8s ease;
+    }
+
+    .loading.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    @media (max-width: 600px) {
+      .title {
+        top: 20px;
+        left: 20px;
+      }
+
+      .title p {
+        display: none;
+      }
+
+      .hint {
+        right: 14px;
+        bottom: 14px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="title">
+    <div class="eyebrow">The Violet Horizon</div>
+    <h1>The King's Baggage</h1>
+    <p>Galleon-rigged aerial raider</p>
+  </div>
+
+  <div class="vignette"></div>
+  <div class="hint">Drag to orbit · Scroll or pinch to zoom</div>
+  <div class="loading" id="loading">Raising the black fleet…</div>
+
+  <script type="module">
+    import * as THREE from
+      "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js";
+
+    // -------------------------------------------------------------------------
+    // Renderer, atmosphere, and camera
+    // -------------------------------------------------------------------------
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x17102d, 0.018);
+
+    const camera = new THREE.PerspectiveCamera(
+      43,
+      innerWidth / innerHeight,
+      0.1,
+      180
+    );
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance"
+    });
+
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.12;
+
+    document.body.insertBefore(renderer.domElement, document.body.firstChild);
+
+    const clock = new THREE.Clock();
+    const world = new THREE.Group();
+    const ship = new THREE.Group();
+
+    scene.add(world);
+    world.add(ship);
+
+    // -------------------------------------------------------------------------
+    // Materials
+    // -------------------------------------------------------------------------
+
+    const materials = {
+      hull: new THREE.MeshStandardMaterial({
+        color: 0x11131a,
+        metalness: 0.82,
+        roughness: 0.48,
+        emissive: 0x07080c,
+        emissiveIntensity: 0.2
+      }),
+
+      hullEdge: new THREE.MeshStandardMaterial({
+        color: 0x292d39,
+        metalness: 0.9,
+        roughness: 0.34
+      }),
+
+      envelope: new THREE.MeshStandardMaterial({
+        color: 0x171b29,
+        metalness: 0.28,
+        roughness: 0.62,
+        emissive: 0x07101e,
+        emissiveIntensity: 0.45
+      }),
+
+      seam: new THREE.MeshStandardMaterial({
+        color: 0x536074,
+        metalness: 0.68,
+        roughness: 0.42,
+        emissive: 0x0a1725,
+        emissiveIntensity: 0.35,
+        transparent: true,
+        opacity: 0.72
+      }),
+
+      copper: new THREE.MeshStandardMaterial({
+        color: 0xa65c2e,
+        metalness: 0.88,
+        roughness: 0.3,
+        emissive: 0x2a0d02,
+        emissiveIntensity: 0.25
+      }),
+
+      agedCopper: new THREE.MeshStandardMaterial({
+        color: 0x653a25,
+        metalness: 0.78,
+        roughness: 0.48,
+        emissive: 0x160500,
+        emissiveIntensity: 0.18
+      }),
+
+      iron: new THREE.MeshStandardMaterial({
+        color: 0x20232c,
+        metalness: 0.9,
+        roughness: 0.42
+      }),
+
+      deck: new THREE.MeshStandardMaterial({
+        color: 0x33251f,
+        metalness: 0.22,
+        roughness: 0.78
+      }),
+
+      wood: new THREE.MeshStandardMaterial({
+        color: 0x493125,
+        metalness: 0.12,
+        roughness: 0.78
+      }),
+
+      rope: new THREE.LineBasicMaterial({
+        color: 0xb29a72,
+        transparent: true,
+        opacity: 0.52
+      }),
+
+      sail: new THREE.MeshStandardMaterial({
+        color: 0x2e2740,
+        metalness: 0.08,
+        roughness: 0.85,
+        side: THREE.DoubleSide,
+        emissive: 0x120d20,
+        emissiveIntensity: 0.35
+      }),
+
+      gold: new THREE.MeshStandardMaterial({
+        color: 0xe0aa52,
+        metalness: 0.72,
+        roughness: 0.28,
+        emissive: 0x5a2600,
+        emissiveIntensity: 0.6,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.DoubleSide
+      }),
+
+      glow: new THREE.MeshBasicMaterial({
+        color: 0xffc35a,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
+    };
+
+    function addMesh(
+      geometry,
+      material,
+      parent = world,
+      position = [0, 0, 0],
+      rotation = null
+    ) {
+      const object = new THREE.Mesh(geometry, material);
+      object.position.set(...position);
+      if (rotation) object.rotation.set(...rotation);
+      object.castShadow = true;
+      object.receiveShadow = true;
+      parent.add(object);
+      return object;
+    }
+
+    function makeGlowTexture() {
+      const canvas = document.createElement("canvas");
+      canvas.width = 128;
+      canvas.height = 128;
+
+      const context = canvas.getContext("2d");
+      const gradient = context.createRadialGradient(
+        64, 64, 0,
+        64, 64, 64
+      );
+
+      gradient.addColorStop(0, "rgba(255,255,255,1)");
+      gradient.addColorStop(0.12, "rgba(255,220,160,0.95)");
+      gradient.addColorStop(0.38, "rgba(255,115,35,0.35)");
+      gradient.addColorStop(1, "rgba(255,90,15,0)");
+
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, 128, 128);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      return texture;
+    }
+
+    // -------------------------------------------------------------------------
+    // Procedural violet sky
+    // -------------------------------------------------------------------------
+
+    const skyUniforms = {
+      topColor: { value: new THREE.Color(0x100b28) },
+      middleColor: { value: new THREE.Color(0x301b55) },
+      horizonColor: { value: new THREE.Color(0x6b3168) },
+      lowColor: { value: new THREE.Color(0x241236) }
+    };
+
+    const skyMaterial = new THREE.ShaderMaterial({
+      uniforms: skyUniforms,
+      side: THREE.BackSide,
+      depthWrite: false,
+      vertexShader: `
+        varying vec3 vWorldPosition;
+
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          gl_Position = projectionMatrix * viewMatrix * worldPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 middleColor;
+        uniform vec3 horizonColor;
+        uniform vec3 lowColor;
+        varying vec3 vWorldPosition;
+
+        void main() {
+          float height = normalize(vWorldPosition).y;
+
+          vec3 color = height > 0.05
+            ? mix(
+                horizonColor,
+                middleColor,
+                smoothstep(0.05, 0.42, height)
+              )
+            : mix(
+                lowColor,
+                horizonColor,
+                smoothstep(-0.18, 0.08, height)
+              );
+
+          color = mix(
+            color,
+            topColor,
+            smoothstep(0.35, 0.92, height)
+          );
+
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `
+    });
+
+    const sky = addMesh(
+      new THREE.SphereGeometry(80, 32, 20),
+      skyMaterial,
+      scene
+    );
+    sky.castShadow = false;
+    sky.receiveShadow = false;
+
+    // -------------------------------------------------------------------------
+    // Stars
+    // -------------------------------------------------------------------------
+
+    const starCount = 1500;
+    const starPositions = new Float32Array(starCount * 3);
+    const starColors = new Float32Array(starCount * 3);
+    const starWarmth = new Float32Array(starCount);
+
+    for (let i = 0; i < starCount; i++) {
+      let x;
+      let y;
+      let z;
+
+      do {
+        x = (Math.random() - 0.5) * 100;
+        y = Math.random() * 55 - 15;
+        z = (Math.random() - 0.5) * 100;
+      } while (Math.hypot(x, z) < 18);
+
+      starPositions[i * 3] = x;
+      starPositions[i * 3 + 1] = y;
+      starPositions[i * 3 + 2] = z;
+
+      const warmth = Math.max(0, Math.sin((y + 20) / 60 * Math.PI));
+      const color = new THREE.Color().setHSL(
+        0.68 + Math.random() * 0.2,
+        0.45 + Math.random() * 0.35,
+        0.72 + Math.random() * 0.2
+      );
+
+      color.multiplyScalar(warmth);
+      starColors[i * 3] = color.r;
+      starColors[i * 3 + 1] = color.g;
+      starColors[i * 3 + 2] = color.b;
+      starWarmth[i] = warmth;
+    }
+
+    const starGeometry = new THREE.BufferGeometry();
+    starGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(starPositions, 3)
+    );
+    starGeometry.setAttribute(
+      "color",
+      new THREE.BufferAttribute(starColors, 3)
+    );
+
+    const stars = new THREE.Points(
+      starGeometry,
+      new THREE.PointsMaterial({
+        size: 0.2,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.85,
+        sizeAttenuation: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      })
+    );
+
+    scene.add(stars);
+
+    // -------------------------------------------------------------------------
+    // Undulating violet cloud sea
+    // -------------------------------------------------------------------------
+
+    const cloudGeometry = new THREE.PlaneGeometry(
+      110,
+      110,
+      110,
+      110
+    );
+    cloudGeometry.rotateX(-Math.PI / 2);
+
+    const cloudPosition = cloudGeometry.attributes.position;
+    const cloudBase = new Float32Array(cloudPosition.count * 2);
+    const cloudColors = [];
+
+    for (let i = 0; i < cloudPosition.count; i++) {
+      cloudBase[i * 2] = cloudPosition.getX(i);
+      cloudBase[i * 2 + 1] = cloudPosition.getZ(i);
+
+      const color = new THREE.Color().setHSL(
+        0.72 + Math.random() * 0.08,
+        0.5 + Math.random() * 0.2,
+        0.25 + Math.random() * 0.16
+      );
+
+      cloudColors.push(color.r, color.g, color.b);
+    }
+
+    cloudGeometry.setAttribute(
+      "color",
+      new THREE.Float32BufferAttribute(cloudColors, 3)
+    );
+
+    const cloudMaterial = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 1,
+      metalness: 0,
+      transparent: true,
+      opacity: 0.78,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+
+    const cloudSea = addMesh(
+      cloudGeometry,
+      cloudMaterial,
+      world,
+      [0, -3.1, 0]
+    );
+    cloudSea.castShadow = false;
+    cloudSea.receiveShadow = true;
+
+    // Flat mist pools floating just above the cloud surface.
+    const mistPools = [];
+    const mistMaterial = new THREE.MeshBasicMaterial({
+      color: 0x9a7bb5,
+      transparent: true,
+      opacity: 0.14,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending
+    });
+
+    [
+      [-8, -4.2, 1.5, 2.2],
+      [7.5, -4.6, 2.1, 1.8],
+      [-3, -4.8, 1.1, 2.8],
+      [10, -3.8, 1.7, 1.4],
+      [-11, -3.5, 1.3, 1.8]
+    ].forEach(([x, z, scale, radius]) => {
+      const pool = addMesh(
+        new THREE.CircleGeometry(radius, 40),
+        mistMaterial.clone(),
+        world,
+        [x, -2.95, z]
+      );
+      pool.rotation.x = -Math.PI / 2;
+      pool.castShadow = false;
+      pool.receiveShadow = false;
+      pool.material.opacity = 0.12;
+
+      mistPools.push({
+        mesh: pool,
+        scale,
+        radius,
+        phase: Math.random() * Math.PI * 2
+      });
+    });
+
+    // -------------------------------------------------------------------------
+    // Main hull: long, low, keel-shaped iron galleon
+    // -------------------------------------------------------------------------
+
+    const hullSections = [
+      { x: -9.0, w: 1.05, top: 0.12, keel: -1.45 },
+      { x: -7.6, w: 1.55, top: 0.18, keel: -2.15 },
+      { x: -4.8, w: 1.85, top: 0.23, keel: -2.45 },
+      { x: -1.2, w: 1.95, top: 0.27, keel: -2.55 },
+      { x: 2.4, w: 1.88, top: 0.24, keel: -2.42 },
+      { x: 5.2, w: 1.58, top: 0.18, keel: -2.08 },
+      { x: 7.3, w: 1.08, top: 0.12, keel: -1.52 },
+      { x: 8.7, w: 0.28, top: 0.08, keel: -0.72 }
+    ];
+
+    function hullPoint(section, around, lift = 0) {
+      const width = section.w;
+      const top = section.top;
+      const keel = section.keel;
+      let z;
+      let y;
+
+      if (around < 0.5) {
+        z = -width;
+        y = top;
+      } else if (around < 0.58) {
+        z = -width * 1.03;
+        y = -1.02;
+      } else if (around < 0.7) {
+        z = -width * 0.83;
+        y = THREE.MathUtils.lerp(-1.02, keel, (around - 0.58) / 0.12);
+      } else if (around < 0.82) {
+        z = 0;
+        y = keel + lift;
+      } else if (around < 0.94) {
+        z = width * 0.83;
+        y = THREE.MathUtils.lerp(keel, -1.02, (around - 0.7) / 0.12);
+      } else if (around < 1) {
+        z = width * 1.03;
+        y = -1.02;
+      } else {
+        z = width;
+        y = top;
+      }
+
+      return new THREE.Vector3(section.x, y, z);
+    }
+
+    const hullPositions = [];
+    const hullUVs = [];
+    const hullIndices = [];
+
+    for (const section of hullSections) {
+      for (let i = 0; i < 12; i++) {
+        hullPositions.push(section.x, section.top, -section.w);
+        hullUVs.push((section.x + 9) / 18, 1);
+      }
+    }
+
+    for (let i = 0; i < hullSections.length - 1; i++) {
+      for (let j = 0; j < 12; j++) {
+        const a = i * 12 + j;
+        const b = i * 12 + ((j + 1) % 12);
+        const c = (i + 1) * 12 + j;
+        const d = (i + 1) * 12 + ((j + 1) % 12);
+
+        hullIndices.push(a, c, b, b, c, d);
+      }
+    }
+
+    const hullGeometry = new THREE.BufferGeometry();
+    hullGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(hullPositions, 3)
+    );
+    hullGeometry.setAttribute(
+      "uv",
+      new THREE.Float32BufferAttribute(hullUVs, 2)
+    );
+    hullGeometry.setIndex(hullIndices);
+    hullGeometry.computeVertexNormals();
+
+    addMesh(hullGeometry, materials.hull, ship);
+
+    // Rounded stern and bow caps.
+    addMesh(
+      new THREE.CircleGeometry(1, 16),
+      materials.hullEdge,
+      ship,
+      [-9.02, -0.08, 0],
+      [0, -Math.PI / 2, 0]
+    );
+
+    addMesh(
+      new THREE.CircleGeometry(1, 16),
+      materials.hullEdge,
+      ship,
+      [8.72, 0.02, 0],
+      [0, Math.PI / 2, 0]
+    );
+
+    // Transverse iron strakes.
+    [0.28, 0.48, 0.68, 0.82].forEach((around, band) => {
+      const points = hullSections.map(section => hullPoint(section, around));
+      const curve = new THREE.CatmullRomCurve3(points);
+
+      addMesh(
+        new THREE.TubeGeometry(curve, 100, 0.035, 6, false),
+        materials.hullEdge,
+        ship
+      );
+    });
+
+    // Copper rubbing strakes.
+    [-1, 1].forEach(side => {
+      const points = hullSections.map(section => {
+        const point = hullPoint(section, side < 0 ? 0.58 : 0.92);
+        point.y += 0.12;
+        return point;
+      });
+
+      const curve = new THREE.CatmullRomCurve3(points);
+
+      addMesh(
+        new THREE.TubeGeometry(curve, 100, 0.055, 7, false),
+        materials.copper,
+        ship
+      );
+    });
+
+    // Dense rows of individually modeled rivets.
+    const rivetGeometry = new THREE.SphereGeometry(0.055, 8, 6);
+    const rivetMaterial = new THREE.MeshStandardMaterial({
+      color: 0x687080,
+      metalness: 0.85,
+      roughness: 0.36
+    });
+
+    const rivets = new THREE.InstancedMesh(
+      rivetGeometry,
+      rivetMaterial,
+      420
+    );
+
+    const rivetDummy = new THREE.Object3D();
+    let rivetIndex = 0;
+
+    hullSections.forEach(section => {
+      const count = section.x < 0 ? 20 : 28;
+
+      for (let i = 0; i < count; i++) {
+        const x = THREE.MathUtils.lerp(-8.55, 8.25, i / (count - 1));
+        const around = 0.16 + Math.random() * 0.69;
+        const point = hullPoint(section, around);
+        point.y += Math.sin(i * 2.1) * 0.025;
+
+        rivetDummy.position.copy(point);
+        rivetDummy.scale.setScalar(0.75 + Math.random() * 0.55);
+        rivetDummy.updateMatrix();
+        rivets.setMatrixAt(rivetIndex++, rivetDummy.matrix);
+      }
+    });
+
+    rivets.instanceMatrix.needsUpdate = true;
+    rivets.castShadow = true;
+    ship.add(rivets);
+
+    // -------------------------------------------------------------------------
+    // Top deck
+    // -------------------------------------------------------------------------
+
+    const deckPositions = [];
+    const deckUVs = [];
+    const deckIndices = [];
+    const deckSegments = 48;
+
+    for (let i = 0; i <= deckSegments; i++) {
+      const x = THREE.MathUtils.lerp(-6.55, 6.55, i / deckSegments);
+      const halfWidth = 1.29 - Math.abs(x) * 0.055;
+
+      deckPositions.push(
+        x, 0.48, -halfWidth,
+        x, 0.48, halfWidth
+      );
+
+      deckUVs.push(
+        i / deckSegments, 0,
+        i / deckSegments, 1
+      );
+    }
+
+    for (let i = 0; i < deckSegments; i++) {
+      const a = i * 2;
+
+      deckIndices.push(
+        a, a + 2, a + 1,
+        a + 1, a + 2, a + 3
+      );
+    }
+
+    const deckGeometry = new THREE.BufferGeometry();
+    deckGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(deckPositions, 3)
+    );
+    deckGeometry.setAttribute(
+      "uv",
+      new THREE.Float32BufferAttribute(deckUVs, 2)
+    );
+    deckGeometry.setIndex(deckIndices);
+    deckGeometry.computeVertexNormals();
+
+    addMesh(deckGeometry, materials.deck, ship);
+
+    // Copper deck edging.
+    [-1, 1].forEach(side => {
+      const points = [];
+
+      for (let i = 0; i <= 40; i++) {
+        const x = THREE.MathUtils.lerp(-6.4, 6.4, i / 40);
+        const width = 1.3 - Math.abs(x) * 0.055;
+
+        points.push(new THREE.Vector3(x, 0.51, side * width));
+      }
+
+      const curve = new THREE.CatmullRomCurve3(points);
+
+      addMesh(
+        new THREE.TubeGeometry(curve, 80, 0.045, 6, false),
+        materials.copper,
+        ship
+      );
+    });
+
+    // -------------------------------------------------------------------------
+    // Whale-backed gas envelope
+    // -------------------------------------------------------------------------
+
+    const envelope = new THREE.Group();
+    ship.add(envelope);
+    // Whale-belly down to deck height: lift bags squat over the gunwales,
+    // Cayley's rule — bag mid, rudder aft, the hull still a hull.
+    // Belly clamp: a full-height whale swallows the hull from below —
+    // flattened draft keeps the iron keel the lowest line (70/30 rule).
+    const BELLY_DRAFT = 0.62;
+    envelope.position.y = -0.35;
+
+    const envelopeLength = 13.4;
+    const envelopeRings = 40;
+    const envelopeSegments = 64;
+    const envelopePositions = [];
+    const envelopeUVs = [];
+    const envelopeIndices = [];
+
+    for (let ring = 0; ring <= envelopeRings; ring++) {
+      const u = ring / envelopeRings;
+      const x = THREE.MathUtils.lerp(
+        -envelopeLength / 2,
+        envelopeLength / 2,
+        u
+      );
+
+      const normalized = x / (envelopeLength / 2);
+      let radius;
+
+      if (Math.abs(normalized) < 0.72) {
+        const angle = Math.acos(
+          THREE.MathUtils.clamp(normalized / 0.72, -1, 1)
+        );
+
+        radius = 2.65 *
+          Math.pow(Math.sin(angle), 0.65) *
+          Math.pow(Math.sin(angle), 0.7);
+      } else {
+        radius = 2.65 *
+          Math.pow(Math.abs(normalized) / 0.72, 0.75);
+      }
+
+      radius = Math.max(0.055, radius);
+
+      for (let segment = 0; segment <= envelopeSegments; segment++) {
+        const v = segment / envelopeSegments;
+        const theta = v * Math.PI * 2;
+
+        // Belly-squash: compress below the waterline so the bag rides
+        // ON the deck like cargo lashed down, never a blimp swallowing her.
+        const ySquash = Math.sin(theta) < 0 ? BELLY_DRAFT : 1;
+
+        envelopePositions.push(
+          x,
+          Math.sin(theta) * radius * ySquash,
+          Math.cos(theta) * radius
+        );
+
+        envelopeUVs.push(u, v);
+      }
+    }
+
+    for (let ring = 0; ring < envelopeRings; ring++) {
+      for (let segment = 0; segment < envelopeSegments; segment++) {
+        const a = ring * (envelopeSegments + 1) + segment;
+        const b = a + envelopeSegments + 1;
+
+        envelopeIndices.push(
+          a, b, a + 1,
+          a + 1, b, b + 1
+        );
+      }
+    }
+
+    const envelopeGeometry = new THREE.BufferGeometry();
+    envelopeGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(envelopePositions, 3)
+    );
+    envelopeGeometry.setAttribute(
+      "uv",
+      new THREE.Float32BufferAttribute(envelopeUVs, 2)
+    );
+    envelopeGeometry.setIndex(envelopeIndices);
+    envelopeGeometry.computeVertexNormals();
+
+    addMesh(envelopeGeometry, materials.envelope, envelope);
+
+    // Keel-strap girdle: the envelope is strapped DOWN to the hull.
+    for (const strapX of [-4.9, -2.5, 0, 2.5, 4.9]) {
+      [-1, 1].forEach(side => {
+        addMesh(
+          new THREE.TubeGeometry(
+            new THREE.CatmullRomCurve3([
+              new THREE.Vector3(strapX, 1.62, side * 1.72),
+              new THREE.Vector3(strapX + 0.55, 1.05, side * 1.42),
+              new THREE.Vector3(strapX + 0.18, 0.58, side * 1.31)
+            ]),
+            24,
+            0.05,
+            6,
+            false
+          ),
+          materials.seam,
+          envelope
+        );
+      });
+    }
+
+    // Three iron mast rings: bow ring at the bowsprit step,
+    // waist over the mainmast, stern by the mizzen. The shared load path.
+    for (const [ringX, ringR] of [[-5.5, 1.05], [0, 2.35], [5.6, 1.02]]) {
+      const ringPoints = [];
+
+      for (let s = 0; s <= 40; s++) {
+        const a = s / 40;
+        const theta = a * Math.PI * 2;
+
+        ringPoints.push(
+          new THREE.Vector3(
+            ringX,
+            Math.sin(theta) * ringR * (Math.sin(theta) < 0 ? BELLY_DRAFT : 1) - 0.35,
+            Math.cos(theta) * ringR
+          )
+        );
+      }
+
+      addMesh(
+        new THREE.TubeGeometry(
+          new THREE.CatmullRomCurve3(ringPoints, true),
+          80,
+          0.06,
+          7,
+          true
+        ),
+        materials.iron,
+        envelope
+      );
+    }
+
+    // Envelope-to-mast-head stay lines: load from lift bags down to rigging.
+    const envelopeStays = [
+      [[-4.2, 3.25], [-4.85, 1.45]],
+      [[0, 3.7], [0.2, 1.75]],
+      [[4.2, 3.25], [4.65, 1.45]]
+    ];
+
+    envelopeStays.forEach(([top, bottom]) => {
+      ship.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(top[0], top[1], 0),
+          new THREE.Vector3(bottom[0] + top[0] * 0.35, bottom[1] + 0.9, 0),
+          new THREE.Vector3(top[0], top[1] - 0.05, 0)
+        ]),
+        materials.rope
+      ));
+    });
+
+    // Raised dorsal ridge.
+    const ridgePoints = [];
+
+    for (let i = 0; i <= 48; i++) {
+      const x = THREE.MathUtils.lerp(-6.15, 6.15, i / 48);
+      const normalized = x / 6.15;
+      const remaining = Math.max(0, 1 - normalized * normalized);
+
+      ridgePoints.push(
+        new THREE.Vector3(
+          x,
+          2.52 * Math.pow(remaining, 0.45) * 0.78 + 0.35,
+          0
+        )
+      );
+    }
+
+    addMesh(
+      new THREE.TubeGeometry(
+        new THREE.CatmullRomCurve3(ridgePoints),
+        80,
+        0.11,
+        8,
+        false
+      ),
+      materials.seam,
+      envelope
+    );
+
+    // Longitudinal whale ribs.
+    for (let rib = 0; rib < 9; rib++) {
+      const v = rib / 8;
+      const theta = v * Math.PI;
+      const points = [];
+
+      for (let i = 0; i <= 60; i++) {
+        const u = i / 60;
+        const x = THREE.MathUtils.lerp(-6.15, 6.15, u);
+        const normalized = x / 6.15;
+        let radius;
+
+        if (Math.abs(normalized) < 0.72) {
+          const angle = Math.acos(
+            THREE.MathUtils.clamp(normalized / 0.72, -1, 1)
+          );
+
+          radius = 2.65 *
+            Math.pow(Math.sin(angle), 0.65) *
+            Math.pow(Math.sin(angle), 0.7);
+        } else {
+          radius = 2.65 *
+            Math.pow(Math.abs(normalized) / 0.72, 0.75);
+        }
+
+        // Whale ribs follow the squashed belly, same as the skin.
+        const ribSquash = Math.sin(theta) < 0 ? BELLY_DRAFT : 1;
+
+        points.push(
+          new THREE.Vector3(
+            x,
+            Math.sin(theta) * radius * ribSquash,
+            Math.cos(theta) * radius
+          )
+        );
+      }
+
+      addMesh(
+        new THREE.TubeGeometry(
+          new THREE.CatmullRomCurve3(points),
+          80,
+          0.026,
+          5,
+          false
+        ),
+        materials.seam,
+        envelope
+      );
+    }
+
+    // Transverse panel seams.
+    for (const x of [-4.8, -2.8, -0.8, 1.2, 3.2, 5.0]) {
+      const points = [];
+
+      for (let i = 0; i <= 24; i++) {
+        const t = i / 24;
+        const z = THREE.MathUtils.lerp(-1.43, 1.43, t);
+        const zTop = 2.16 - Math.abs(z) * 1.18;
+        // Panel seams track the squashed belly on their underside.
+        const zBot = 2.16 * BELLY_DRAFT * (1 - Math.abs(z) / 1.43) - 0.0;
+        const y = z < 0
+          ? THREE.MathUtils.lerp(zBot, zTop, 1 + z / 1.43)
+          : THREE.MathUtils.lerp(zBot, zTop, z / 1.43);
+
+        points.push(new THREE.Vector3(x, y, z));
+      }
+
+      addMesh(
+        new THREE.TubeGeometry(
+          new THREE.CatmullRomCurve3(points),
+          32,
+          0.022,
+          5,
+          false
+        ),
+        materials.seam,
+        envelope
+      );
+    }
+
+    // Vertical envelope ribs.
+    for (const x of [-5.8, -3.9, -1.9, 0.2, 2.3, 4.4, 5.8]) {
+      const points = [];
+
+      for (let i = 0; i <= 24; i++) {
+        const t = i / 24;
+        const z = THREE.MathUtils.lerp(-1.55, 1.55, t);
+        const zTop = 2.18 - Math.abs(z) * 1.18;
+        const zBot = 2.18 * BELLY_DRAFT * (1 - Math.abs(z) / 1.55);
+        const y = z < 0
+          ? THREE.MathUtils.lerp(zBot, zTop, 1 + z / 1.55)
+          : THREE.MathUtils.lerp(zBot, zTop, z / 1.55);
+
+        points.push(new THREE.Vector3(x, y, z));
+      }
+
+      addMesh(
+        new THREE.TubeGeometry(
+          new THREE.CatmullRomCurve3(points),
+          32,
+          0.025,
+          5,
+          false
+        ),
+        materials.seam,
+        envelope
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Deck fittings, rails, lanterns, and masts
+    // -------------------------------------------------------------------------
+
+    function addCopperPost(x, y, z, height = 0.5, radius = 0.055) {
+      const post = addMesh(
+        new THREE.CylinderGeometry(radius, radius * 1.15, height, 10),
+        materials.copper,
+        ship,
+        [x, y + height / 2, z]
+      );
+
+      const cap = addMesh(
+        new THREE.SphereGeometry(radius * 1.15, 10, 8),
+        materials.copper,
+        ship,
+        [x, y + height, z]
+      );
+
+      cap.scale.y = 0.55;
+      return post;
+    }
+
+    for (const x of [-5.8, -3.9, -1.9, 0, 1.9, 3.9, 5.8]) {
+      addCopperPost(x, 0.49, -1.15, 0.48, 0.045);
+      addCopperPost(x, 0.49, 1.15, 0.48, 0.045);
+    }
+
+    for (const x of [-4.6, -2.3, 0, 2.3, 4.6]) {
+      addMesh(
+        new THREE.CylinderGeometry(0.09, 0.13, 0.28, 10),
+        materials.iron,
+        ship,
+        [x, 0.64, 0]
+      );
+
+      addMesh(
+        new THREE.CylinderGeometry(0.17, 0.17, 0.055, 10),
+        materials.iron,
+        ship,
+        [x, 0.8, 0]
+      );
+    }
+
+    // Lanterns along the center rail.
+    for (const x of [-4.8, -2.4, 0, 2.4, 4.8]) {
+      addCopperPost(x, 0.49, 0, 0.62, 0.055);
+
+      const lantern = addMesh(
+        new THREE.CylinderGeometry(0.11, 0.15, 0.28, 8),
+        materials.glow,
+        ship,
+        [x, 1.0, 0]
+      );
+
+      lantern.material = materials.glow.clone();
+      lantern.material.opacity = 0.58;
+
+      addMesh(
+        new THREE.ConeGeometry(0.17, 0.18, 8),
+        materials.iron,
+        ship,
+        [x, 1.24, 0]
+      );
+    }
+
+    // Rail posts.
+    for (let i = 0; i < 18; i++) {
+      const x = THREE.MathUtils.lerp(-6.2, 6.2, i / 17);
+
+      addCopperPost(x, 0.5, -1.31, 0.52, 0.035);
+      addCopperPost(x, 0.5, 1.31, 0.52, 0.035);
+    }
+
+    // Upper copper rails.
+    [-1, 1].forEach(side => {
+      const points = [];
+
+      for (let i = 0; i <= 32; i++) {
+        const x = THREE.MathUtils.lerp(-6.2, 6.2, i / 32);
+
+        points.push(
+          new THREE.Vector3(x, 1.02, side * 1.31)
+        );
+      }
+
+      addMesh(
+        new THREE.TubeGeometry(
+          new THREE.CatmullRomCurve3(points),
+          64,
+          0.035,
+          6,
+          false
+        ),
+        materials.copper,
+        ship
+      );
+    });
+
+    // -------------------------------------------------------------------------
+    // Animated sails with four-pointed golden sigils
+    // -------------------------------------------------------------------------
+
+    const sails = [];
+
+    function createSail(x, height, baseWidth, tipWidth, zOffset) {
+      const columns = 8;
+      const rows = 12;
+      const positions = [];
+      const uvs = [];
+      const indices = [];
+
+      for (let row = 0; row <= rows; row++) {
+        const t = row / rows;
+        const y = -height / 2 + t * height;
+        const taper = Math.pow(t, 1.12);
+        const halfWidth =
+          THREE.MathUtils.lerp(baseWidth, tipWidth, taper) / 2;
+
+        for (let column = 0; column <= columns; column++) {
+          const u = column / columns;
+
+          positions.push(
+            (u - 0.5) * halfWidth,
+            y,
+            0
+          );
+
+          uvs.push(u, t);
+        }
+      }
+
+      for (let row = 0; row < rows; row++) {
+        for (let column = 0; column < columns; column++) {
+          const a = row * (columns + 1) + column;
+          const b = a + columns + 1;
+
+          indices.push(
+            a, b, a + 1,
+            a + 1, b, b + 1
+          );
+        }
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(positions, 3)
+      );
+      geometry.setAttribute(
+        "uv",
+        new THREE.Float32BufferAttribute(uvs, 2)
+      );
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+
+      const sail = addMesh(
+        geometry,
+        materials.sail,
+        ship,
+        [x, height * 0.25, zOffset]
+      );
+
+      sail.userData.geometry = geometry;
+      sail.userData.base = new Float32Array(positions);
+
+      sails.push({
+        mesh: sail,
+        x,
+        height,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+
+    function createFourPointedStar(size) {
+      const shape = new THREE.Shape();
+
+      for (let i = 0; i < 8; i++) {
+        const radius = i % 2 === 0 ? 0.23 : 0.075;
+        const angle = -Math.PI / 2 + i * Math.PI / 4;
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+
+        if (i === 0) shape.moveTo(x, y);
+        else shape.lineTo(x, y);
+      }
+
+      shape.closePath();
+
+      return new THREE.Mesh(
+        new THREE.ShapeGeometry(shape),
+        materials.gold
+      );
+    }
+
+    // Topmasts docked into lift-bag sockets — they end BESIDE the bag,
+    // never against its belly (Cayley's three-ring load path).
+    const mastData = [
+      [-4.2, 2.05, 1.65, 0.45, 0.42],
+      [0, 2.25, 1.9, 0.5, 0.44],
+      [4.2, 2.05, 1.65, 0.45, 0.42]
+    ];
+
+    mastData.forEach(([x, height, baseWidth, tipWidth, zOffset]) => {
+      const mast = addMesh(
+        new THREE.CylinderGeometry(0.075, 0.11, height, 12),
+        materials.wood,
+        ship,
+        [x, 0.5 + height / 2, zOffset]
+      );
+
+      const mastCap = addMesh(
+        new THREE.SphereGeometry(0.1, 10, 8),
+        materials.iron,
+        ship,
+        [x, 0.5 + height, zOffset]
+      );
+
+      mastCap.scale.y = 0.55;
+
+      createSail(x, height, baseWidth, tipWidth, zOffset);
+
+      const star = createFourPointedStar(0.3);
+      star.position.set(x, height * 0.25 + 0.04, zOffset + 0.18);
+      ship.add(star);
+
+      const sigilLight = new THREE.PointLight(
+        0xffb34d,
+        1.25,
+        3.2,
+        2
+      );
+
+      sigilLight.position.copy(star.position);
+      ship.add(sigilLight);
+    });
+
+    // Shrouds and complex rigging lines.
+    mastData.forEach(([x, height, zOffset]) => {
+      for (let i = 0; i < 7; i++) {
+        const topX = x + (Math.random() - 0.5) * 1.5;
+        const topZ = zOffset + (Math.random() - 0.5) * 1.2;
+        const bottomX = x + (Math.random() - 0.5) * 2.2;
+        const bottomZ = zOffset + (Math.random() - 0.5) * 2;
+
+        const points = [
+          new THREE.Vector3(x, 0.5 + height, zOffset),
+          new THREE.Vector3(
+            bottomX * 0.65,
+            0.5 + height * 0.72,
+            topZ * 0.65
+          ),
+          new THREE.Vector3(bottomX, 0.58, bottomZ)
+        ];
+
+        const line = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints(points),
+          materials.rope
+        );
+
+        ship.add(line);
+      }
+
+      for (let i = 0; i < 4; i++) {
+        const line = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(x, 0.5 + height, zOffset),
+            new THREE.Vector3(
+              x + 0.8 + i * 0.45,
+              0.65,
+              zOffset + (i - 1.5) * 0.18
+            )
+          ]),
+          materials.rope
+        );
+
+        ship.add(line);
+      }
+    });
+
+    // Bow- and stern-stay hardware: the third triangulation anchor.
+    // Each mast head cables to a stem post and a sternpost iron.
+    [-9, -5.5, 0, 5.5, 8.85].forEach((x, index) => {
+      const anchorY = index === 4 ? 0.95 : 0.9;
+
+      addMesh(
+        new THREE.CylinderGeometry(0.07, 0.09, 0.5, 8),
+        materials.copper,
+        ship,
+        [x, anchorY, 0]
+      );
+    });
+
+    [-9, 8.85].forEach(stemX => {
+      mastData.forEach(([x, height]) => {
+        for (let r = 0; r < 2; r++) {
+          ship.add(new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([
+              new THREE.Vector3(x, 0.5 + height * (r ? 0.82 : 1), 0),
+              new THREE.Vector3(
+                stemX * (stemX > 0 ? 0.93 : 0.94),
+                0.72 + r * 0.18,
+                (r ? 0.35 : -0.3)
+              ),
+              new THREE.Vector3(stemX, 1.05, 0)
+            ]),
+            materials.rope
+          ));
+        }
+      });
+    });
+
+    // Fore-and-aft stays: every mast bowsprit-to-mizzen through mid-deck eyes.
+    for (let m = 0; m < mastData.length - 1; m++) {
+      const [x1, h1] = mastData[m];
+      const [x2, h2] = mastData[m + 1];
+
+      for (let r = 0; r < 3; r++) {
+        const zRun = (r - 1) * 0.42;
+
+        ship.add(new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(x1, 0.5 + h1 * 0.96, zRun * 0.6),
+            new THREE.Vector3((x1 + x2) / 2, 0.62, zRun),
+            new THREE.Vector3(x2, 0.5 + h2 * 0.78, zRun * 0.6)
+          ]),
+          materials.rope
+        ));
+      }
+    }
+
+    // Belly-cradle diagonals: hull gunwale up to the bag's lower seams —
+    // the truss that welds two stacked systems into ONE silhouette.
+    [-1, 1].forEach(side => {
+      mastData.forEach(([x], mi) => {
+        ship.add(new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(x, 0.98, side * 1.28),
+            new THREE.Vector3(x + 1.3, 0.4, side * 1.05),
+            new THREE.Vector3(x * 0.92, -0.28, side * 1.62)
+          ]),
+          materials.rope
+        ));
+
+        ship.add(new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(x, 0.98, side * 1.28),
+            new THREE.Vector3(x - 1.4, 0.45, side * 1.0),
+            new THREE.Vector3(x * 0.86 + (mi - 1) * 0.9, -0.22, side * 1.58)
+          ]),
+          materials.rope
+        ));
+      });
+    });
+
+    // -------------------------------------------------------------------------
+    // Stern furnace and glowing propeller pods
+    // -------------------------------------------------------------------------
+
+    const furnace = new THREE.Group();
+    furnace.position.set(-9.25, -0.65, 0);
+    ship.add(furnace);
+
+    const furnaceBody = addMesh(
+      new THREE.BoxGeometry(1.4, 1.4, 2.1),
+      materials.agedCopper,
+      furnace
+    );
+
+    const furnaceOpening = addMesh(
+      new THREE.BoxGeometry(0.78, 0.88, 2.18),
+      materials.glow,
+      furnace
+    );
+
+    furnaceOpening.material = materials.glow.clone();
+    furnaceOpening.material.opacity = 0.72;
+
+    const furnaceLight = new THREE.PointLight(
+      0xff6a18,
+      16,
+      8,
+      2
+    );
+
+    furnaceLight.position.set(-9.2, -0.55, 0);
+    ship.add(furnaceLight);
+
+    const furnaceGlow = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: makeGlowTexture(),
+        color: 0xff7a22,
+        transparent: true,
+        opacity: 0.58,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
+    );
+
+    furnaceGlow.position.set(-9.2, -0.55, 0);
+    furnaceGlow.scale.set(5, 3.4, 1);
+    ship.add(furnaceGlow);
+
+    const propellers = [];
+
+    [-1, 1].forEach(side => {
+      const pod = new THREE.Group();
+      pod.position.set(-9.55, -0.55, side * 1.35);
+      ship.add(pod);
+
+      const hub = addMesh(
+        new THREE.CylinderGeometry(0.22, 0.22, 0.55, 12),
+        materials.iron,
+        pod
+      );
+
+      hub.rotation.z = Math.PI / 2;
+
+      for (let i = 0; i < 5; i++) {
+        const blade = addMesh(
+          new THREE.BoxGeometry(1.55, 0.09, 0.16),
+          materials.iron,
+          pod
+        );
+
+        blade.rotation.x = i * Math.PI * 2 / 5;
+        blade.rotation.z = 0.18;
+      }
+
+      const disc = addMesh(
+        new THREE.CircleGeometry(0.72, 32),
+        materials.glow,
+        pod,
+        [0.3, 0, 0]
+      );
+
+      disc.rotation.y = Math.PI / 2;
+      disc.material = materials.glow.clone();
+      disc.material.opacity = 0.28;
+
+      propellers.push({
+        pod,
+        side,
+        speed: side * (2.8 + Math.random() * 0.8)
+      });
+    });
+
+    // Tail fins and rudder: the bag steers, hull drives — Cayley's rule.
+    const tailGroup = new THREE.Group();
+    envelope.add(tailGroup);
+
+    [-1, 1].forEach(side => {
+      addMesh(
+        new THREE.BoxGeometry(1.55, 0.07, 2.15),
+        materials.envelope,
+        tailGroup,
+        [7.05, side * 1.12, 0]
+      );
+
+      addMesh(
+        new THREE.TubeGeometry(
+          new THREE.CatmullRomCurve3([
+            new THREE.Vector3(-0.85, side * 1.1, 0),
+            new THREE.Vector3(0, side * 1.05, 0),
+            new THREE.Vector3(0.95, side * 1.08, 0)
+          ]),
+          24,
+          0.055,
+          6,
+          false
+        ),
+        materials.seam,
+        tailGroup
+      );
+    });
+
+    addMesh(
+      new THREE.BoxGeometry(1.35, 2.25, 0.07),
+      materials.envelope,
+      tailGroup,
+      [7.25, 0, 0]
+    );
+
+    // Swept box-frame rudder post aft of the fin.
+    for (let i = 0; i < 6; i++) {
+      addMesh(
+        new THREE.BoxGeometry(0.09, i % 2 ? 2.0 : 0.09, 0.09),
+        materials.seam,
+        tailGroup,
+        [8.0 + (i > 2 ? 0.75 : 0), i > 2 ? 0 : (i - 1) * 1.02, 0]
+      );
+    }
+
+    // Exhaust pipes and stern fittings.
+    for (const z of [-0.72, 0.72]) {
+      addMesh(
+        new THREE.CylinderGeometry(0.12, 0.15, 1.1, 10),
+        materials.iron,
+        ship,
+        [-8.75, 0.2, z]
+      );
+
+      addMesh(
+        new THREE.CylinderGeometry(0.2, 0.2, 0.12, 10),
+        materials.copper,
+        ship,
+        [-8.18, 0.2, z]
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Rising ember particles
+    // -------------------------------------------------------------------------
+
+    const emberCount = 90;
+    const emberPositions = new Float32Array(emberCount * 3);
+    const emberSpeeds = new Float32Array(emberCount);
+    const emberPhases = new Float32Array(emberCount);
+
+    for (let i = 0; i < emberCount; i++) {
+      emberPositions[i * 3] = (Math.random() - 0.5) * 0.6;
+      emberPositions[i * 3 + 1] = Math.random() * 1.4;
+      emberPositions[i * 3 + 2] = (Math.random() - 0.5) * 1;
+      emberSpeeds[i] = 0.28 + Math.random() * 0.55;
+      emberPhases[i] = Math.random() * Math.PI * 2;
+    }
+
+    const emberGeometry = new THREE.BufferGeometry();
+    emberGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(emberPositions, 3)
+    );
+
+    const emberMaterial = new THREE.PointsMaterial({
+      color: 0xff8b28,
+      size: 0.11,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    const embers = new THREE.Points(emberGeometry, emberMaterial);
+    ship.add(embers);
+
+    // -------------------------------------------------------------------------
+    // Orbiting soft furnace light
+    // -------------------------------------------------------------------------
+
+    const orbitLight = new THREE.PointLight(
+      0xff8a35,
+      4.5,
+      7,
+      2
+    );
+
+    orbitLight.position.set(-9.2, 0.8, 2.8);
+    ship.add(orbitLight);
+
+    // -------------------------------------------------------------------------
+    // Scene lighting
+    // -------------------------------------------------------------------------
+
+    scene.add(
+      new THREE.HemisphereLight(
+        0x7154a8,
+        0x180b24,
+        1.25
+      )
+    );
+
+    const moonlight = new THREE.DirectionalLight(
+      0x9ab7ff,
+      2.2
+    );
+
+    moonlight.position.set(12, 18, 10);
+    moonlight.castShadow = true;
+    moonlight.shadow.mapSize.set(2048, 2048);
+    moonlight.shadow.camera.left = -18;
+    moonlight.shadow.camera.right = 18;
+    moonlight.shadow.camera.top = 18;
+    moonlight.shadow.camera.bottom = -18;
+    moonlight.shadow.camera.near = 1;
+    moonlight.shadow.camera.far = 55;
+    moonlight.shadow.bias = -0.00035;
+
+    scene.add(moonlight);
+
+    const rimLight = new THREE.DirectionalLight(
+      0x6c4dff,
+      1.35
+    );
+
+    rimLight.position.set(-10, 4, -12);
+    scene.add(rimLight);
+
+    const warmFill = new THREE.PointLight(
+      0x5b246c,
+      2.2,
+      18,
+      2
+    );
+
+    warmFill.position.set(0, 2, 5);
+    scene.add(warmFill);
+
+    // -------------------------------------------------------------------------
+    // Direct camera controls: orbit, wheel zoom, and touch pinch
+    // -------------------------------------------------------------------------
+
+    const controls = {
+      target: new THREE.Vector3(0, 0.1, 0),
+      radius: 24,
+      theta: 0.68,
+      phi: 1.19,
+      desiredRadius: 24,
+      desiredTheta: 0.68,
+      desiredPhi: 1.19,
+      dragging: false,
+      lastX: 0,
+      lastY: 0,
+      pointers: new Map(),
+      pinchDistance: 0
+    };
+
+    function getPointerDistance() {
+      const points = [...controls.pointers.values()];
+
+      if (points.length < 2) return 0;
+
+      return Math.hypot(
+        points[0].x - points[1].x,
+        points[0].y - points[1].y
+      );
+    }
+
+    renderer.domElement.addEventListener("pointerdown", event => {
+      renderer.domElement.setPointerCapture(event.pointerId);
+
+      controls.pointers.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY
+      });
+
+      controls.dragging = true;
+      controls.lastX = event.clientX;
+      controls.lastY = event.clientY;
+      controls.pinchDistance = getPointerDistance();
+    });
+
+    renderer.domElement.addEventListener("pointermove", event => {
+      if (!controls.pointers.has(event.pointerId)) return;
+
+      controls.pointers.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY
+      });
+
+      if (controls.pointers.size >= 2) {
+        const distance = getPointerDistance();
+
+        if (
+          controls.pinchDistance > 0 &&
+          distance > 0
+        ) {
+          controls.desiredRadius = THREE.MathUtils.clamp(
+            controls.desiredRadius *
+              (controls.pinchDistance / distance),
+            12,
+            43
+          );
+        }
+
+        controls.pinchDistance = distance;
+        return;
+      }
+
+      if (!controls.dragging) return;
+
+      const deltaX = event.clientX - controls.lastX;
+      const deltaY = event.clientY - controls.lastY;
+
+      controls.lastX = event.clientX;
+      controls.lastY = event.clientY;
+
+      controls.desiredTheta -= deltaX * 0.006;
+      controls.desiredPhi = THREE.MathUtils.clamp(
+        controls.desiredPhi - deltaY * 0.005,
+        0.32,
+        1.48
+      );
+    });
+
+    function releasePointer(event) {
+      controls.pointers.delete(event.pointerId);
+
+      controls.dragging = controls.pointers.size > 0;
+      controls.pinchDistance = getPointerDistance();
+    }
+
+    renderer.domElement.addEventListener(
+      "pointerup",
+      releasePointer
+    );
+
+    renderer.domElement.addEventListener(
+      "pointercancel",
+      releasePointer
+    );
+
+    renderer.domElement.addEventListener(
+      "lostpointercapture",
+      releasePointer
+    );
+
+    renderer.domElement.addEventListener(
+      "wheel",
+      event => {
+        event.preventDefault();
+
+        controls.desiredRadius = THREE.MathUtils.clamp(
+          controls.desiredRadius * Math.exp(
+            event.deltaY * 0.001
+          ),
+          12,
+          43
+        );
+      },
+      { passive: false }
+    );
+
+    function updateCamera() {
+      controls.theta +=
+        (controls.desiredTheta - controls.theta) * 0.075;
+
+      controls.phi +=
+        (controls.desiredPhi - controls.phi) * 0.075;
+
+      controls.radius +=
+        (controls.desiredRadius - controls.radius) * 0.08;
+
+      const sinPhi = Math.sin(controls.phi);
+
+      camera.position.set(
+        controls.target.x +
+          controls.radius *
+            sinPhi *
+            Math.sin(controls.theta),
+        controls.target.y +
+          controls.radius *
+            Math.cos(controls.phi),
+        controls.target.z +
+          controls.radius *
+            sinPhi *
+            Math.cos(controls.theta)
+      );
+
+      camera.lookAt(controls.target);
+    }
+
+    // -------------------------------------------------------------------------
+    // Animation
+    // -------------------------------------------------------------------------
+
+    // View-linking: a hash like #az=135&el=12 sets the opening camera,
+    // so a screenshot or a complaint can carry its own vantage point.
+    const viewHash = new URLSearchParams(
+      window.location.hash.replace(/^#/, "")
+    );
+
+    if (viewHash.has("az")) {
+      controls.desiredTheta = THREE.MathUtils.degToRad(
+        parseFloat(viewHash.get("az"))
+      );
+    }
+
+    if (viewHash.has("el")) {
+      // Negative elevation means "camera below the ship" — flip into the
+      // 0..π range with the camera under her instead of clamping to horizon.
+      const elDeg = parseFloat(viewHash.get("el"));
+
+      controls.desiredPhi = elDeg >= 0
+        ? THREE.MathUtils.clamp(
+            THREE.MathUtils.degToRad(elDeg),
+            0.15,
+            Math.PI / 2
+          )
+        : THREE.MathUtils.clamp(
+            Math.PI / 2 -
+              THREE.MathUtils.degToRad(elDeg) * 0.9,
+            Math.PI / 2,
+            Math.PI - 0.12
+          );
+    }
+
+    if (viewHash.has("dist")) {
+      controls.desiredRadius = THREE.MathUtils.clamp(
+        parseFloat(viewHash.get("dist")),
+        12,
+        43
+      );
+    }
+
+    const clockTime = { value: 0 };
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const time = clockTime.value += clock.getDelta();
+
+      // Slow flight: gentle climb, settle, glide — a sky-ship breathes.
+      ship.position.y = Math.sin(time * 0.15) * 1.15 + Math.sin(time * 0.31) * 0.18;
+      ship.position.x = Math.sin(time * 0.09) * 0.25;
+      ship.rotation.z = Math.sin(time * 0.19) * 0.05;
+      ship.rotation.x = Math.sin(time * 0.14) * 0.03;
+      ship.rotation.y = Math.sin(time * 0.13) * 0.018;
+
+      // Breathing whale-envelope seams and very slow envelope flex.
+      envelope.scale.setScalar(
+        1 + Math.sin(time * 0.78) * 0.006
+      );
+
+      envelope.rotation.z = Math.sin(time * 0.19) * 0.004;
+      envelope.rotation.y = Math.sin(time * 0.13) * 0.008;
+
+      materials.seam.opacity =
+        0.62 + Math.sin(time * 0.8) * 0.12;
+
+      // Sails wave softly.
+      sails.forEach((sail, index) => {
+        const position = sail.mesh.userData.geometry.attributes.position;
+        const base = sail.mesh.userData.base;
+
+        for (let i = 0; i < position.count; i++) {
+          const x = base[i * 3];
+          const y = base[i * 3 + 1];
+          const strength =
+            0.08 +
+            0.2 *
+              Math.max(0, 1 - Math.abs(x) / 2.1);
+
+          const wave =
+            Math.sin(
+              time * 1.65 +
+              sail.phase +
+              x * 2.2 +
+              y * 0.8
+            ) * strength +
+            Math.sin(
+              time * 0.8 +
+              sail.phase * 0.7 +
+              y * 1.4
+            ) * strength * 0.35;
+
+          position.setZ(i, wave);
+        }
+
+        position.needsUpdate = true;
+        sail.mesh.geometry.computeVertexNormals();
+      });
+
+      // Pulsing golden sigils.
+      sails.forEach((sail, index) => {
+        const star = ship.children.find(
+          child =>
+            child.type === "Mesh" &&
+            child.geometry?.type === "ShapeGeometry" &&
+            index === sails.indexOf(sail)
+        );
+
+        if (star) {
+          const pulse = 1 +
+            Math.sin(time * 2.1 + index) * 0.12;
+
+          star.scale.setScalar(pulse);
+          star.material.opacity =
+            0.72 + Math.sin(time * 2.1 + index) * 0.18;
+
+        star.material.transparent = true;
+        }
+      });
+
+      // Propellers spin rapidly.
+      propellers.forEach(propeller => {
+        propeller.pod.rotation.x +=
+          propeller.speed * 0.012;
+      });
+
+      // Furnace flicker.
+      const flicker =
+        0.86 +
+        Math.sin(time * 11.7) * 0.08 +
+        Math.sin(time * 19.3) * 0.05;
+
+      furnaceLight.intensity = 16 * flicker;
+      furnaceGlow.material.opacity = 0.48 * flicker;
+      furnaceOpening.material.opacity = 0.58 * flicker;
+      orbitLight.intensity = 4.2 * flicker;
+
+      // Rising embers.
+      const emberAttribute = emberGeometry.attributes.position;
+
+      for (let i = 0; i < emberCount; i++) {
+        let y = emberAttribute.getY(i) + emberSpeeds[i] * 0.012;
+        let x = emberAttribute.getX(i) +
+          Math.sin(time * 1.7 + emberPhases[i]) * 0.008;
+
+        if (y > 2.1) {
+          y = -1.7;
+          x = (Math.random() - 0.5) * 0.6;
+          emberPhases[i] = Math.random() * Math.PI * 2;
+        }
+
+        emberAttribute.setX(i, x);
+        emberAttribute.setY(i, y);
+      }
+
+      emberAttribute.needsUpdate = true;
+      emberMaterial.opacity = 0.75 + flicker * 0.25;
+
+      // The orange light orbits around the stern.
+      orbitLight.position.set(
+        -9.2 + Math.sin(time * 0.55) * 1.8,
+        -0.2 + Math.cos(time * 0.42) * 1.1,
+        2.8 + Math.sin(time * 0.37) * 1.4
+      );
+
+      // Cloud movement.
+      cloudSea.position.x = Math.sin(time * 0.035) * 2.2;
+      cloudSea.rotation.z = Math.sin(time * 0.08) * 0.008;
+
+      cloudPosition.needsUpdate = true;
+
+      for (let i = 0; i < cloudPosition.count; i++) {
+        const x = cloudBase[i * 2];
+        const z = cloudBase[i * 2 + 1];
+
+        const wave =
+          Math.sin(x * 0.17 + time * 0.42) * 0.25 +
+          Math.sin(z * 0.23 - time * 0.31) * 0.18 +
+          Math.sin((x + z) * 0.11 + time * 0.2) * 0.2;
+
+        cloudPosition.setY(i, wave);
+      }
+
+      cloudGeometry.attributes.position.needsUpdate = true;
+      cloudGeometry.computeVertexNormals();
+
+      // Mist pools drift and breathe.
+      mistPools.forEach(pool => {
+        pool.mesh.position.x +=
+          Math.sin(time * 0.12 + pool.phase) * 0.0008;
+
+        pool.mesh.position.z +=
+          Math.cos(time * 0.1 + pool.phase) * 0.0007;
+
+        pool.mesh.material.opacity =
+          0.1 + Math.sin(time * 0.45 + pool.phase) * 0.035;
+
+        pool.mesh.scale.setScalar(
+          pool.scale *
+            (1 + Math.sin(time * 0.3 + pool.phase) * 0.08)
+        );
+      });
+
+      updateCamera();
+      renderer.render(scene, camera);
+    }
+
+    // -------------------------------------------------------------------------
+    // Resize handling
+    // -------------------------------------------------------------------------
+
+    function onResize() {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(
+        Math.min(devicePixelRatio, 2)
+      );
+    }
+
+    addEventListener("resize", onResize);
+
+    updateCamera();
+    animate();
+
+    requestAnimationFrame(() => {
+      document.getElementById("loading").classList.add("hidden");
+    });
+  </script>
+</body>
+</html>

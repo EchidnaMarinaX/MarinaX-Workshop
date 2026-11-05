@@ -1,16 +1,20 @@
+; Engine configuration file.
+; Godot 4 project — open with Godot 4.2 or newer.
+
+config_version=5
+
 [application]
+
 config/name="Cozy Fox Den"
 run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.2", "GL Compatibility")
 
 [display]
+
 window/size/viewport_width=960
 window/size/viewport_height=540
-window/size/window_width_override=960
-window/size/window_height_override=540
 
 [rendering]
+
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
-
-[input]
-interact={"deadzone": 0.5, "events": [Object(InputEventKey,"physical_keycode":69)]}

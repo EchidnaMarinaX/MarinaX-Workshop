@@ -1,15 +1,11 @@
-# Cozy Fox Den
+# Cozy Fox Den — Godot 4 (4.2 or newer)
 
-A tiny Godot 4 project made by Ingrid.
-
-## Open it
-
-1. Extract this folder from the zip.
-2. Open Godot 4.
-3. Choose **Import** and select the extracted folder (the folder containing `project.godot`).
-4. Press **Run Project** or F6.
+## With Godot Launcher
+1. Extract the zip. You get a folder `cozy-fox-den` with `project.godot` inside.
+2. In Godot Launcher, install a Godot **4.x** editor first (Installs tab) if none is installed.
+3. Projects tab → **Add / Import** → pick the `cozy-fox-den` folder (not the zip).
+4. If asked, choose the 4.x editor for it. Open the project.
+5. Press **F5** (Run Project).
 
 ## Controls
-
-- Arrow keys: move
-- E: inspect the suspicious stone when nearby
+Arrow keys or WASD move. **E** near the stone inspects it.
